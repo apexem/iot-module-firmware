@@ -1,40 +1,27 @@
 // Import required libraries
 #include "ESP8266WiFi.h"
-#include <aREST.h>
 #include "DHT.h"
+#include <ESP8266WebServer.h>
+#include "ArduinoJson.h"
 
 // Sensor pins
 #define DHTPIN 2
 #define DHTTYPE DHT11
-//#define TRIGPIN 15
-//#define ECHOPIN 13
 
-// Create aREST instance
-aREST rest = aREST();
-
-// Initialize DHT sensor
 DHT dht(DHTPIN, DHTTYPE);
 
 // WiFi parameters
 const char* ssid = "NETIASPOT-2.4GHzEXT";
 const char* password = "vaR8xAe8";
-
-//const char* ssid = "NETIASPOT-2.4GHz-C4y6";
-//const char* password = "xTUD5dMN";
-
-// The port to listen for incoming TCP connections
 #define LISTEN_PORT           80
 
-// Create an instance of the server
-WiFiServer server(LISTEN_PORT);
+//WiFiServer server(LISTEN_PORT);
+ESP8266WebServer server(80);
 
 // Variables to be exposed to the API
 float temperature;
 float humidity;
 float analog;
-
-//float distance;
-//float duration;
 
 void setup(void)
 {
@@ -44,16 +31,6 @@ void setup(void)
 
   // Init DHT
   dht.begin();
-
-  // Init variables and expose them to REST API
-  rest.variable("temperature", &temperature);
-  rest.variable("humidity", &humidity);
-  rest.variable("analog", &analog);
-
-  // Give name and ID to device
-  rest.set_id("1");
-  rest.set_name("dht_module");
-
   // Connect to WiFi
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
@@ -63,6 +40,8 @@ void setup(void)
   Serial.println("");
   Serial.println("WiFi connected");
 
+  server.on("/temperature", readTemperature);
+  server.on("/analog", readAnalog);
   // Start the server
   server.begin();
   Serial.println("Server started");
@@ -71,19 +50,33 @@ void setup(void)
   Serial.println(WiFi.localIP());
 }
 
-void loop() {
-  // Reading temperature and humidity
-  temperature = dht.readTemperature();
-  humidity = dht.readHumidity();
-
-  // Handle REST calls
-  WiFiClient client = server.available();
-  if (!client) {
-    return;
-  }
-  while (!client.available()) {
-    delay(1);
-  }
+void readAnalog() {
   analog = analogRead(A0);
-  rest.handle(client);
+  const int capacity = JSON_OBJECT_SIZE(3);
+  StaticJsonDocument<capacity> doc;
+  doc["module"] = "main";
+  doc["analog"] = analog;
+  String json;
+  serializeJson(doc, json);
+  server.send(200, "text/plain", json);
+}
+
+void readTemperature() {
+    temperature = dht.readTemperature(); 
+    const int capacity = JSON_OBJECT_SIZE(3);
+    StaticJsonDocument<capacity> doc;
+    doc["module"] = "main";
+    doc["temperature"] = temperature;
+    String json;
+    serializeJson(doc, json);
+    server.send(200, "text/plain", String(temperature));
+}
+
+void readHumidity() {
+    humidity = dht.readHumidity();
+    server.send(200, "text/plain", String(humidity));
+}
+
+void loop() {
+  server.handleClient();
 }
